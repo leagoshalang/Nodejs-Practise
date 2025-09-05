@@ -126,7 +126,10 @@ const resetPassword = async (req, res) => {
     if (!token || !newPassword) {
         return res.status(400).json({ error: 'Token and new password are required' });
     }
-   
+    if(newPassword.length < 8){
+        return res.status(400).json({error: 'Password must be at least 8 characters'});
+    }
+    
     try {
         const hashedPassword = await bcrypt.hash(newPassword, 12);
 
@@ -188,4 +191,4 @@ const forgotPassword = async (req, res) => {
  
     
 
-module.exports = { RegisterUser,UserLogin, forgotPassword }
+module.exports = { RegisterUser,UserLogin, forgotPassword, resetPassword };
