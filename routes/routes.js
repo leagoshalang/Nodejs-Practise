@@ -1,13 +1,16 @@
-const {RegisterUser,UserLogin} = require('../models/user');
+const {RegisterUser,UserLogin,forgotPassword} = require('../models/user');
 const express = require('express');
-const { userDashboard } = require('../models/UserDashboard');
+const { AdminDashboard } = require('../models/AdminDashboard');
+const { LodgeQuery } = require('../models/LodgeQuery');
+
 
 const router = express.Router();
 
 router.post('/register', RegisterUser);
 router.post('/login', UserLogin); 
-router.get('/dashboard', userDashboard);
-
+router.get('/dashboard', AdminDashboard);
+router.post('/lodgequery', LodgeQuery);
+router.post('/forgotpassword', forgotPassword);
 
 
 module.exports = router;

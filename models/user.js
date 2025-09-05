@@ -1,6 +1,9 @@
 const bcrypt = require('bcrypt');
 const dbConfig = require('../config/confi');
 const { response } = require('express');
+const crypto = require('crypto');
+const nodemailer = require('nodemailer');
+
 
 const RegisterUser = (req, res) => {
     const { username, email, password } = req.body;
@@ -90,4 +93,99 @@ const UserLogin = (req, res) => {
     });
 };
 
-module.exports = { RegisterUser,UserLogin };
+/*--------------------------------------------------------------------------------------------------*/
+const sendResetEmail = async (email, resetToken, username) => {
+       
+        const transporter = nodemailer.createTransport({
+            service: 'Gmail',
+            auth: {
+                user: process.env.EMAIL_USER, 
+                pass: process.env.EMAIL_PASS 
+            }
+
+        });
+
+        const resetLink = `http://localhost:3000/reset-password?token=${resetToken}`;   
+
+        const mailOptions = {
+            from: process.env.EMAIL_USER,
+            to: email,
+            subject: 'Password Reset Request',
+            text: `Hello ${username},\n\nYou requested a password reset. Please use the following link to reset your password:\n\n${resetLink}\n\nThis link will expire in 1 hour.\n\nIf you did not request this, please ignore this email.\n\nBest regards,\nYour Company`
+        };
+
+        await transporter.sendMail(mailOptions);
+        console.log(`Password reset email sent to ${email}`);
+
+    }
+
+
+const resetPassword = async (req, res) => {
+    const { token, newPassword } = req.body;
+
+    if (!token || !newPassword) {
+        return res.status(400).json({ error: 'Token and new password are required' });
+    }
+   
+    try {
+        const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+        const query = 'UPDATE user SET password = ?, WHERE id= ?';
+        await dbConfig.promise().query(query, [hashedPassword, userId]);
+
+        res.status(200).json({ message: 'Password reset successful' });
+
+    } catch (error) {
+        console.error('Error during password reset:', error);
+        return res.status(500).json({ error: 'Error during password reset' });
+    }
+
+}
+
+const forgotPassword = async (req, res) => {
+    const {email} = req.body;
+    if(!email){
+        return res.status(400).json({error: 'Please provide email'});
+    }
+    const query = 'SELECT * FROM user WHERE email = ?'
+    dbConfig.query(query, [email], async (error, results) => {
+        if (error) {
+            console.error('Database check error:', error);
+            return res.status(500).json({ error: 'Database error during user check' })
+        }
+        
+        if (results.length == 0) {
+            return res.status(404).json({ error: 'Email not found' })
+        }
+
+        try{
+            const user = results[0]
+
+        // Here you would typically generate a reset token and send an email
+        const resetToken = crypto.randomBytes(32).toString('hex');
+       // const hashedToken = await bcrypt.hash(resetToken, 12);
+
+        const tokenExpiry = Date.now() + 3600000; // 1 hour from now
+        //const updateQuery = 'UPDATE user SET resetToken = ?, tokenExpiry = ? WHERE username = ?';
+
+        //await dbConfig.promise().query(updateQuery, [hashedToken, tokenExpiry, user.id])
+        
+        await sendResetEmail(email,resetToken,user.id)
+       
+
+        console.log(`Password reset token for ${email}: ${resetToken}`);
+        console.log(`Token expires at: ${new Date(tokenExpiry).toISOString()}`)
+
+
+        res.status(200).json({ message: 'Password reset link sent to email' })
+
+        }catch(err){
+            console.error('Error during sending reset link process:', err)
+    }
+}
+    )
+}
+ 
+    
+
+module.exports = { RegisterUser,UserLogin, forgotPassword }
