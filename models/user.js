@@ -3,10 +3,11 @@ const dbConfig = require('../config/confi');
 const { response } = require('express');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
+const jwt = require('jsonwebtoken');
 
 
 const RegisterUser = (req, res) => {
-    const { username, email, password } = req.body;
+    const { username, email, password,id } = req.body;
 
     // Validate password length-
     if (password.length < 8) {
@@ -34,8 +35,8 @@ const RegisterUser = (req, res) => {
             }
 
             // Store user in the database
-            const query = 'INSERT INTO user (username, email, password) VALUES (?, ?, ?)';
-            const values = [username, email, hashedPassword];
+            const query = 'INSERT INTO user (username, email, password,id) VALUES (?, ?, ?, ?)';
+            const values = [username, email, hashedPassword,id];
 
             dbConfig.query(query, values, (err, result) => {
                 if (err) {
@@ -121,25 +122,38 @@ const sendResetEmail = async (email, resetToken, username) => {
 
 
 const resetPassword = async (req, res) => {
-    const { token, newPassword } = req.body;
+    const { token, newPassword, confirmPassword} = req.body;
 
-    if (!token || !newPassword) {
+    if (!token || !newPassword || !confirmPassword) {
         return res.status(400).json({ error: 'Token and new password are required' });
     }
     if(newPassword.length < 8){
         return res.status(400).json({error: 'Password must be at least 8 characters'});
     }
+    if(newPassword !== confirmPassword){
+        return res.status(400).json({error: 'Passwords do not match'});
+    }
     
     try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const userId = decoded.id; 
+
         const hashedPassword = await bcrypt.hash(newPassword, 12);
 
-        const query = 'UPDATE user SET password = ?, WHERE id= ?';
+        const query = 'UPDATE user SET password = ? WHERE id= ?';
         await dbConfig.promise().query(query, [hashedPassword, userId]);
 
         res.status(200).json({ message: 'Password reset successful' });
 
     } catch (error) {
         console.error('Error during password reset:', error);
+
+         if (error.name === 'JsonWebTokenError') {
+            return res.status(400).json({ error: 'Invalid token' });
+        }
+        if (error.name === 'TokenExpiredError') {
+            return res.status(400).json({ error: 'Token expired' });
+        }
         return res.status(500).json({ error: 'Error during password reset' });
     }
 
@@ -164,8 +178,17 @@ const forgotPassword = async (req, res) => {
         try{
             const user = results[0]
 
+            const resetToken = jwt.sign(
+                 { 
+                    id: user.id,
+                    email: user.email 
+         },
+         process.env.JWT_SECRET, // ← Make sure this is correct
+         { expiresIn: '1h' }
+);
+
         // Here you would typically generate a reset token and send an email
-        const resetToken = crypto.randomBytes(32).toString('hex');
+        //const resetToken = crypto.randomBytes(32).toString('hex');
        // const hashedToken = await bcrypt.hash(resetToken, 12);
 
         const tokenExpiry = Date.now() + 3600000; // 1 hour from now
